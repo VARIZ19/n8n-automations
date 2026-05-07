@@ -1,0 +1,151 @@
+{
+  "name": "GitHub → LinkedIn Auto Poster",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-push",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook (GitHub Actions)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "github-push-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{$env.ANTHROPIC_API_KEY}}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 500,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a professional LinkedIn post (max 300 words) announcing a new project. Project name: {{$json.body.repo_name}}. Description: {{$json.body.repo_desc}}. GitHub: {{$json.body.repo_url}}. Live demo: {{$json.body.vercel_url}}. Last commit: {{$json.body.commit_msg}}. Make it engaging, use emojis, add relevant hashtags like #buildinpublic #webdev #javascript. End with a CTA to check the live demo. Do not add any preamble, just the post text.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "claude-ai",
+      "name": "Generate Post (Claude AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Claude's response text\nconst response = $input.first().json;\nconst postText = response.content[0].text;\n\n// Add project links at end\nconst fullPost = postText + `\\n\\n🔗 GitHub: ${$('Webhook (GitHub Actions)').first().json.body.repo_url}\\n🚀 Live: ${$('Webhook (GitHub Actions)').first().json.body.vercel_url}`;\n\nreturn [{ json: { postText: fullPost, repoName: $('Webhook (GitHub Actions)').first().json.body.repo_name } }];"
+      },
+      "id": "format-post",
+      "name": "Format Post Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "resource": "ugcPost",
+        "operation": "create",
+        "author": "={{$env.LINKEDIN_PERSON_URN}}",
+        "lifecycleState": "PUBLISHED",
+        "visibility": "PUBLIC",
+        "text": "={{$json.postText}}",
+        "additionalFields": {}
+      },
+      "id": "linkedin-post",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [1020, 300],
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "linkedin-oauth",
+          "name": "LinkedIn OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\": \"success\", \"message\": \"Posted to LinkedIn\", \"repo\": \"{{$('Format Post Text').first().json.repoName}}\"}"
+      },
+      "id": "respond",
+      "name": "Respond to GitHub",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1280, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (GitHub Actions)": {
+      "main": [
+        [
+          {
+            "node": "Generate Post (Claude AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Post (Claude AI)": {
+      "main": [
+        [
+          {
+            "node": "Format Post Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Post Text": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Respond to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
